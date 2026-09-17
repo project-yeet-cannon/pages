@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Binary Clock</title>
+<style>
+  :root {
+    --bg: #14100c;
+    --panel: #251c14;
+    --wood: #362a1c;
+    --label-color: #cbb89a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Several off-center, differently-sized dark patches instead of one
+       even vignette, like a bare bulb somewhere out of frame rather
+       than even room lighting. */
+    background:
+      radial-gradient(ellipse 60% 45% at 22% 15%, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.5) 100%),
+      radial-gradient(ellipse 50% 60% at 85% 80%, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.6) 100%),
+      radial-gradient(ellipse 70% 70% at 60% 40%, #241b12 0%, var(--bg) 75%);
+    font-family: Georgia, "Times New Roman", serif;
+    padding: 24px 12px;
+    position: relative;
+  }
+
+  .clock-panel {
+    background: linear-gradient(180deg, var(--panel), var(--wood));
+    border: 1px solid #1a130c;
+    border-radius: 10px;
+    padding: 34px 26px 20px;
+    box-shadow:
+      0 10px 30px rgba(0, 0, 0, 0.65),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      inset 0 0 40px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    max-width: 100%;
+    position: relative;
+    isolation: isolate;
+  }
+
+  /* Uneven ambient shadow patches over the panel surface — a couple of
+     irregular dark blobs, not a symmetric vignette, so the lighting
+     reads as a single dim, off-angle bulb rather than a studio setup. */
+  .clock-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 5;
+    background:
+      radial-gradient(ellipse 55% 40% at 12% 8%, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 60%),
+      radial-gradient(ellipse 40% 55% at 92% 88%, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 55%),
+      radial-gradient(ellipse 35% 30% at 75% 10%, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 60%);
+  }
+
+  .title {
+    color: var(--label-color);
+    letter-spacing: 0.25em;
+    font-size: clamp(1.4rem, 4vw, 2rem);
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+
+  .columns {
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    flex-wrap: nowrap;
+  }
+
+  .group {
+    display: flex;
+    gap: 1px;
+  }
+
+  .column {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(3px, 1vw, 7px);
+    align-items: center;
+    padding: 6px 6px;
+  }
+
+  /* The dark pipe manifold connecting a column's four bulb bases,
+     like a gas-lamp conduit. Sits at whichever edge the bases face. */
+  .column::before {
+    content: "";
+    position: absolute;
+    top: -8px;
+    bottom: -8px;
+    width: 8px;
+    left: 3px;
+    border-radius: 4px;
+    background:
+      repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.65) 0 3px, transparent 3px 23%),
+      linear-gradient(90deg, #121215, #55575d 45%, #121215);
+    box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.85), 0 0 3px rgba(0, 0, 0, 0.6);
+    z-index: 0;
+  }
+
+  .column.mirrored::before {
+    left: auto;
+    right: 3px;
+  }
+
+  /* Base template bulb is drawn base-left / glass-right. The right-hand
+     column of each H/M/S pair is mirrored so its base points outward
+     to the right and its glass faces the left column's glass. */
+  .column.mirrored .bulb-svg {
+    transform: scaleX(-1);
+  }
+
+  .bulb {
+    position: relative;
+    z-index: 1;
+    width: clamp(30px, 11.5vw, 78px);
+    aspect-ratio: 2 / 1;
+  }
+
+  .bulb-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  .bulb .glass-globe {
+    transition: fill 0.25s ease, stroke 0.25s ease;
+  }
+
+  .bulb .filament {
+    stroke: #5b4632;
+    opacity: 0.55;
+    transition: stroke 0.25s ease, opacity 0.25s ease;
+  }
+
+  .bulb.on .filament {
+    stroke: #fff6d6;
+    opacity: 1;
+  }
+
+  .bulb .light-group {
+    transition: filter 0.25s ease;
+  }
+
+  .bulb.on .light-group {
+    filter:
+      drop-shadow(0 0 4px rgba(255, 190, 90, 0.9))
+      drop-shadow(0 0 11px rgba(255, 140, 0, 0.55));
+  }
+
+  .legend {
+    color: var(--label-color);
+    font-size: 0.7rem;
+    opacity: 0.6;
+    text-align: center;
+    max-width: 340px;
+    line-height: 1.4;
+  }
+
+  .digital-readout {
+    color: #ffb347;
+    font-size: clamp(1rem, 3vw, 1.4rem);
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 8px rgba(255, 179, 71, 0.5);
+  }
+
+  @media (max-width: 480px) {
+    .clock-panel { padding: 26px 14px 14px; }
+    .columns { gap: 14px; }
+  }
+</style>
+</head>
+<body>
+  <!-- Shared gradients for every bulb; referenced by url(#id) from each
+       inline SVG below so the definitions only exist once. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <radialGradient id="glassOffGrad" cx="35%" cy="30%" r="75%">
+        <stop offset="0%" stop-color="#f2f5f6" stop-opacity="0.55"/>
+        <stop offset="45%" stop-color="#c7d0d4" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#828e94" stop-opacity="0.22"/>
+      </radialGradient>
+      <radialGradient id="glassOnGradAmber" cx="35%" cy="32%" r="75%">
+        <stop offset="0%" stop-color="#fffaf0"/>
+        <stop offset="35%" stop-color="#ffd27a"/>
+        <stop offset="75%" stop-color="#ffab3d"/>
+        <stop offset="100%" stop-color="#c97418"/>
+      </radialGradient>
+      <radialGradient id="glassOnGradGold" cx="35%" cy="32%" r="75%">
+        <stop offset="0%" stop-color="#fffef2"/>
+        <stop offset="35%" stop-color="#ffe49a"/>
+        <stop offset="75%" stop-color="#f5b942"/>
+        <stop offset="100%" stop-color="#b8791a"/>
+      </radialGradient>
+      <radialGradient id="glassOnGradEmber" cx="35%" cy="32%" r="75%">
+        <stop offset="0%" stop-color="#fff2df"/>
+        <stop offset="35%" stop-color="#ffb066"/>
+        <stop offset="75%" stop-color="#e8792a"/>
+        <stop offset="100%" stop-color="#a34d10"/>
+      </radialGradient>
+      <linearGradient id="brassGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#e2c581"/>
+        <stop offset="50%" stop-color="#b89252"/>
+        <stop offset="100%" stop-color="#7c5f2c"/>
+      </linearGradient>
+      <linearGradient id="brassGradDark" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#c9ad74"/>
+        <stop offset="50%" stop-color="#96773f"/>
+        <stop offset="100%" stop-color="#5e4620"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- Three bulb variants: different globe roundness, filament shape and
+       base detailing, so a bank of bulbs doesn't look identically stamped. -->
+  <template id="bulbTemplateA">
+    <div class="bulb">
+      <svg class="bulb-svg" viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg">
+        <g class="base-group">
+          <rect x="0" y="19" width="3.5" height="12" rx="1" fill="#4a3a1c"/>
+          <rect x="3" y="14" width="16" height="22" rx="2.5" fill="url(#brassGrad)" stroke="#4a3a1c" stroke-width="0.6"/>
+          <line x1="6" y1="17.5" x2="19" y2="17.5" stroke="#4a3a1c" stroke-width="1" opacity="0.6"/>
+          <line x1="6" y1="21.5" x2="19" y2="21.5" stroke="#4a3a1c" stroke-width="1" opacity="0.6"/>
+          <line x1="6" y1="28.5" x2="19" y2="28.5" stroke="#4a3a1c" stroke-width="1" opacity="0.6"/>
+          <line x1="6" y1="32.5" x2="19" y2="32.5" stroke="#4a3a1c" stroke-width="1" opacity="0.6"/>
+        </g>
+        <path class="neck" d="M19,15 L19,35 L33,40 L33,10 Z" fill="#aab4b8" opacity="0.55"/>
+        <g class="light-group">
+          <ellipse class="glass-globe" cx="67" cy="25" rx="30" ry="22" fill="url(#glassOffGrad)" stroke="#7d8990" stroke-width="1"/>
+          <line x1="35" y1="18" x2="45" y2="18" stroke="#9c8a5c" stroke-width="1.4"/>
+          <line x1="35" y1="32" x2="45" y2="32" stroke="#9c8a5c" stroke-width="1.4"/>
+          <path class="filament" d="M45,18 L53,31 L61,18 L69,31 L77,18 L85,31 L92,18" fill="none" stroke-width="2.1" stroke-linecap="round"/>
+          <ellipse class="glass-shine" cx="58" cy="14" rx="13" ry="4.5" fill="#ffffff" opacity="0.22" transform="rotate(-8 58 14)"/>
+        </g>
+      </svg>
+    </div>
+  </template>
+
+  <template id="bulbTemplateB">
+    <div class="bulb">
+      <svg class="bulb-svg" viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg">
+        <g class="base-group">
+          <rect x="0" y="19" width="3.5" height="12" rx="1" fill="#4a3a1c"/>
+          <rect x="3" y="14" width="16" height="22" rx="2" fill="url(#brassGradDark)" stroke="#3c2e14" stroke-width="0.6"/>
+          <circle cx="6.5" cy="16" r="0.9" fill="#3c2e14" opacity="0.7"/>
+          <circle cx="15.5" cy="16" r="0.9" fill="#3c2e14" opacity="0.7"/>
+          <circle cx="6.5" cy="34" r="0.9" fill="#3c2e14" opacity="0.7"/>
+          <circle cx="15.5" cy="34" r="0.9" fill="#3c2e14" opacity="0.7"/>
+          <rect x="6" y="23" width="10" height="4" rx="1" fill="#3c2e14" opacity="0.55"/>
+        </g>
+        <path class="neck" d="M19,16 L19,34 L30,38 L30,12 Z" fill="#aab4b8" opacity="0.55"/>
+        <g class="light-group">
+          <ellipse class="glass-globe" cx="64" cy="25" rx="27" ry="24" fill="url(#glassOffGrad)" stroke="#7d8990" stroke-width="1"/>
+          <line x1="30" y1="25" x2="38" y2="25" stroke="#9c8a5c" stroke-width="1.4"/>
+          <path class="filament" d="M38,25 C44,12 50,38 56,25 C61,14 67,36 72,25 C76,18 80,18 84,25" fill="none" stroke-width="2" stroke-linecap="round"/>
+          <ellipse class="glass-shine" cx="55" cy="12" rx="12" ry="4" fill="#ffffff" opacity="0.22" transform="rotate(-10 55 12)"/>
+        </g>
+      </svg>
+    </div>
+  </template>
+
+  <template id="bulbTemplateC">
+    <div class="bulb">
+      <svg class="bulb-svg" viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg">
+        <g class="base-group">
+          <rect x="0" y="19" width="3.5" height="12" rx="1" fill="#4a3a1c"/>
+          <rect x="3" y="15" width="17" height="20" rx="2.5" fill="url(#brassGrad)" stroke="#4a3a1c" stroke-width="0.6"/>
+          <rect x="8" y="10.5" width="7" height="5" fill="#8a6d33" stroke="#4a3a1c" stroke-width="0.5" transform="rotate(45 11.5 13)"/>
+          <line x1="6" y1="19" x2="20" y2="19" stroke="#4a3a1c" stroke-width="1" opacity="0.6"/>
+          <line x1="6" y1="24" x2="20" y2="24" stroke="#4a3a1c" stroke-width="1" opacity="0.6"/>
+          <line x1="6" y1="30" x2="20" y2="30" stroke="#4a3a1c" stroke-width="1" opacity="0.6"/>
+        </g>
+        <path class="neck" d="M20,15 L20,35 L34,39.5 L34,10.5 Z" fill="#aab4b8" opacity="0.55"/>
+        <g class="light-group">
+          <ellipse class="glass-globe" cx="68" cy="25" rx="29" ry="21" fill="url(#glassOffGrad)" stroke="#7d8990" stroke-width="1"/>
+          <line x1="34" y1="18" x2="44" y2="18" stroke="#9c8a5c" stroke-width="1.4"/>
+          <line x1="34" y1="32" x2="44" y2="32" stroke="#9c8a5c" stroke-width="1.4"/>
+          <path class="filament" d="M44,18 L58,32 L72,18 L86,32" fill="none" stroke-width="2.2" stroke-linecap="round"/>
+          <ellipse class="glass-shine" cx="58" cy="15" rx="14" ry="5" fill="#ffffff" opacity="0.22" transform="rotate(-6 58 15)"/>
+        </g>
+      </svg>
+    </div>
+  </template>
+
+  <div class="clock-panel">
+    <div class="title">The Raven</div>
+
+    <div class="columns" id="columns" aria-hidden="true"></div>
+
+    <div class="digital-readout" id="readout">00:00:00</div>
+
+    <div class="legend">
+      "Once upon a midnight dreary, while I pondered, weak and weary…"<br>
+      Quoth the Raven, "Nevermore."<br>
+      <em>&mdash; Edgar Allan Poe, "The Raven," 1845</em>
+    </div>
+  </div>
+
+  <script>
+    const GROUPS = [
+      { label: "H", digits: 2 },
+      { label: "M", digits: 2 },
+      { label: "S", digits: 2 },
+    ];
+
+    // Distinct glass color per variant, matched to its template so the
+    // three bulb designs also glow slightly differently when lit.
+    const VARIANTS = [
+      { template: "bulbTemplateA", onGradient: "url(#glassOnGradAmber)" },
+      { template: "bulbTemplateB", onGradient: "url(#glassOnGradGold)" },
+      { template: "bulbTemplateC", onGradient: "url(#glassOnGradEmber)" },
+    ];
+
+    const columnsEl = document.getElementById("columns");
+    const readoutEl = document.getElementById("readout");
+
+    function createBulb(variantIndex) {
+      const variant = VARIANTS[variantIndex % VARIANTS.length];
+      const template = document.getElementById(variant.template);
+      const bulbEl = template.content.firstElementChild.cloneNode(true);
+      // Store the per-variant "on" gradient inline since it can't live in
+      // shared CSS (each variant lights a different color).
+      bulbEl.dataset.onFill = variant.onGradient;
+      return bulbEl;
+    }
+
+    // Build the static DOM once: one .column of 4 .bulb divs per digit,
+    // grouped into H / M / S. Variant cycles across every bulb position
+    // so neighboring bulbs rarely share the same design.
+    const bulbGrid = []; // bulbGrid[columnIndex] = [bulbEl_bit8, bulbEl_bit4, bulbEl_bit2, bulbEl_bit1]
+    let columnCounter = 0;
+
+    GROUPS.forEach((group) => {
+      const groupEl = document.createElement("div");
+      groupEl.className = "group";
+
+      for (let d = 0; d < group.digits; d++) {
+        const columnEl = document.createElement("div");
+        // Left digit of a pair (tens) keeps the base-left/glass-right
+        // template as-is; the right digit (ones) is mirrored so its
+        // base points right and its glass faces the tens column's glass.
+        columnEl.className = d === 1 ? "column mirrored" : "column";
+        const bulbs = [];
+        for (let bit = 0; bit < 4; bit++) {
+          const variantIndex = (columnCounter + bit) % VARIANTS.length;
+          const bulbEl = createBulb(variantIndex);
+          columnEl.appendChild(bulbEl);
+          bulbs.push(bulbEl);
+        }
+        groupEl.appendChild(columnEl);
+        bulbGrid.push(bulbs);
+        columnCounter++;
+      }
+
+      columnsEl.appendChild(groupEl);
+    });
+
+    function setColumn(columnIndex, decimalDigit) {
+      const bits = [8, 4, 2, 1];
+      const bulbs = bulbGrid[columnIndex];
+      bits.forEach((bitValue, i) => {
+        const bulbEl = bulbs[i];
+        const isOn = (decimalDigit & bitValue) !== 0;
+        bulbEl.classList.toggle("on", isOn);
+        const globe = bulbEl.querySelector(".glass-globe");
+        globe.style.fill = isOn ? bulbEl.dataset.onFill : "url(#glassOffGrad)";
+      });
+    }
+
+    function pad2(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function render() {
+      const now = new Date();
+      const h = pad2(now.getHours());
+      const m = pad2(now.getMinutes());
+      const s = pad2(now.getSeconds());
+      const digits = (h + m + s).split("").map(Number); // [Htens,Hones,Mtens,Mones,Stens,Sones]
+
+      digits.forEach((digit, i) => setColumn(i, digit));
+      readoutEl.textContent = `${h}:${m}:${s}`;
+    }
+
+    render();
+    setInterval(render, 1000);
+  </script>
+</body>
+</html>
